@@ -1,0 +1,29 @@
+{
+  "name": "mettre",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "/home/zetlen/proj/zetlen-boilerplates"
+  },
+  "keywords": [],
+  "author": "zetlen <zetlen@gmail.com>",
+  "license": "Parity-7.0.0",
+  "dependencies": {
+    "@fastify/env": "^4.1.0",
+    "@fastify/sensible": "^5.1.1",
+    "@putdotio/api-client": "^8.32.0",
+    "camelspace": "^2.0.0",
+    "chokidar": "^3.5.3",
+    "fastify": "^4.6.0",
+    "fastify-blipp": "^3.1.0",
+    "fastify-no-icon": "^6.0.0",
+    "fastify-sqlite": "^1.1.0",
+    "picomatch": "^2.3.1"
+  }
+}
