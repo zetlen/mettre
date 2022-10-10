@@ -1,13 +1,3 @@
-import { inspect as utilinspect } from "util";
-const defaultInspectOpts = {
-	colors: false,
-	compact: true,
-	depth: 3,
-	maxStringLength: 150,
-};
-const inspect = (o, opts) =>
-	utilinspect(o, opts ? { ...defaultInspectOpts, ...ops } : defaultInspectOpts);
-
 function isPrimitive(value) {
 	if (!value) {
 		return true;
@@ -26,7 +16,6 @@ function isThenable(obj) {
 const LOG_INVOCATIONS_PROXY = Symbol.for("LOG_INVOCATIONS_PROXY");
 const isLogProxy = (obj) => Reflect.has(obj, LOG_INVOCATIONS_PROXY);
 
-
 export function logInvocations(obj, name, callback) {
 	function proxyFunction(func, path) {
 		let callIds = 0;
@@ -34,23 +23,23 @@ export function logInvocations(obj, name, callback) {
 		const logPrefix = `INVOCATION:${dotPath}:`;
 		function cbInvoke(callId, args) {
 			callback({
-				message: `${logPrefix}${callId} called with (${args
-					.map(inspect)
-					.join()})`,
+				message: `${logPrefix}${callId} called with ${args.length} args`,
+				args,
 				path,
 				callId,
 			});
 		}
-		function cbReturn(callId, out) {
+		function cbReturn(callId, returned) {
 			callback({
-				message: `${logPrefix}${callId} returned ${inspect(out)}`,
+				message: `${logPrefix}${callId} returned a ${typeof returned}`,
+				returned,
 				path,
 				callId,
 			});
 		}
 		function cbThrow(callId, e) {
 			callback({
-				message: `${logPrefix}${callId} threw ${inspect(e)}`,
+				message: `${logPrefix}${callId} threw ${e.message}`,
 				path,
 				callId,
 			});
@@ -97,7 +86,7 @@ export function logInvocations(obj, name, callback) {
 				) {
 					return value;
 				}
-				const newPath = path.concat(prop);
+				const newPath = path.concat(prop.toString());
 				const newProxy = proxyValue(value, newPath);
 				Reflect.set(target, prop, newProxy);
 				return newProxy;
@@ -105,11 +94,23 @@ export function logInvocations(obj, name, callback) {
 		});
 	}
 	function proxyValue(value, path) {
-		const proxy =  typeof value === "function"
-			? proxyFunction(value, path)
-			: proxyObject(value, path);
+		const proxy =
+			typeof value === "function"
+				? proxyFunction(value, path)
+				: proxyObject(value, path);
 		Reflect.set(proxy, LOG_INVOCATIONS_PROXY, true);
 		return proxy;
 	}
 	return proxyValue(obj, [name]);
+}
+
+export function tattle(Constructable, parentLogger, pinoOpts = {}) {
+	const name = Constructable.name;
+	const logger = parentLogger.child({ name, ...pinoOpts });
+	return (...constructorArgs) => {
+		const instance = new Constructable(...constructorArgs, logger);
+			return logInvocations(instance, name, (invocation) =>
+				logger.trace(invocation)
+			);
+	}
 }

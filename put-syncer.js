@@ -6,6 +6,7 @@ import PutIOAPI from "@putdotio/api-client";
 import got from "got";
 import FormData from "form-data";
 import path from "node:path";
+import { tattle } from "./tattletale.js";
 
 export class PutSyncer {
 	constructor({
@@ -13,9 +14,8 @@ export class PutSyncer {
 		clientId,
 		incompleteDir,
 		completeDir,
-		uploadUrl,
-		logger
-	}) {
+		uploadUrl
+	}, logger) {
 		/**
 		 * @type {import('pino').Logger}
 		 */
@@ -44,15 +44,11 @@ export class PutSyncer {
 		}
 
 		/** @type {import("@putdotio/api-client").default} */
-		this.client = new PutIOAPI.default({ clientId });
+		this.client = new tattle(PutIOAPI.default, this.logger)({ clientId });
 		this.client.setToken(clientToken);
 		this.uploadUrl = new URL(uploadUrl).href;
 		this.incompleteDir = path.resolve(incompleteDir);
 		this.completeDir = path.resolve(completeDir);
-	}
-
-	async callClient(clientCallback) {
-		this.logger.
 	}
 
 	async start() {

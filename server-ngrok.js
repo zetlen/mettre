@@ -1,5 +1,5 @@
-import { connect as ngrokConnect } from "ngrok";
 import camelspace from "camelspace";
+import { connect as ngrokConnect } from "ngrok";
 import { WebhookServer } from "./webhook-server.js";
 import { BlackHoleWatcher } from "./blackhole-watcher.js";
 import { PutSyncer } from "./put-syncer.js";
@@ -7,22 +7,30 @@ import { config } from "dotenv";
 
 async function startNgrokServer() {
 	config();
-	const { webhook, blackhole, ngrok, putio } = camelspace.of([
+	const { webhook, blackhole, ngrok, putio, log } = camelspace.of([
 		"webhook",
 		"blackhole",
 		"ngrok",
 		"putio",
+		"log",
 	]);
 
-	const putSyncer = new PutSyncer(putio);
 
-	const webhookServer = new WebhookServer(webhook);
-	webhookServer.on("callback", (info) => {
-		console.log("callback url called with", info);
-		putSyncer.download(info);
+	const webhookServer = new WebhookServer(
+		{...webhook, logger: log }
+	);
+	const logger = webhookServer.logger;
+
+	/** @type {WebhookServer} */
+	webhookServer.on("callback", async (info) => {
+		await putSyncer.download(info);
 	});
 
-	const blackholeObserver = new BlackHoleWatcher(blackhole);
+	const putSyncer = new PutSyncer(putio, logger.child({ name: "PutSyncer" }));
+	const blackholeObserver = new BlackHoleWatcher(
+		blackhole,
+		logger.child({ name: "BlackHoleWatcher" })
+	);
 	blackholeObserver.on("torrent", ({ filename, size }) =>
 		putSyncer.startTorrentTransfer(filename, size)
 	);
@@ -39,9 +47,9 @@ async function startNgrokServer() {
 		port: webhookServer.port,
 	});
 	const callbackEndpoint = new URL(webhook.callPath, ngrokUrl).href;
-	console.log("webhook running at %s", callbackEndpoint);
+	logger.info("webhook running at %s", callbackEndpoint);
 	const putCallbackUrl = await putSyncer.getCallbackUrl();
-	console.log("put.io will call back %s", putCallbackUrl);
+	logger.info("put.io will call back %s", putCallbackUrl);
 	if (callbackEndpoint !== putCallbackUrl) {
 		throw new Error(
 			`put.io is not configured correctly: callback url is ${putCallbackUrl}. please set your callback url to ${callbackEndpoint}`

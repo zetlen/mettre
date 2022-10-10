@@ -4,16 +4,31 @@ import formBody from "@fastify/formbody";
 import noIcon from "fastify-no-icon";
 import { EventEmitter } from "node:events";
 
+const envToLogger = {
+  development: {
+    transport: {
+      target: 'pino-pretty',
+      options: {
+        translateTime: 'HH:MM:ss Z',
+        ignore: 'pid,hostname',
+      },
+    },
+  },
+  production: true,
+  test: false,
+}
+
 export class WebhookServer extends EventEmitter {
 	constructor({ host, port, callPath = "/done", logger }) {
 		super();
 		this.port = Number(port);
 		this.host = host;
 		this.callPath = callPath;
-		this.logger = logger;
-		const app = fastify({
-			logger
-		});
+		const app = fastify({ logger: {
+			...envToLogger[process.env.NODE_ENV || "production"],
+			...logger
+		} });
+		this.logger = app.log;
 		app.register(sensible);
 		app.register(noIcon);
 		app.register(formBody);
