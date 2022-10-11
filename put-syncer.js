@@ -1,19 +1,14 @@
-import { createWriteStream } from "node:fs";
-import { readdir, readFile, rename as move } from "node:fs/promises";
-import { pipeline } from "node:stream/promises";
 import parseTorrent from "parse-torrent";
 import PutIOAPI from "@putdotio/api-client";
 import got from "got";
 import FormData from "form-data";
-import path from "node:path";
+import path, { parse } from "node:path";
 import { tattle } from "./tattletale.js";
 
 export class PutSyncer {
 	constructor({
 		clientToken,
 		clientId,
-		incompleteDir,
-		completeDir,
 		uploadUrl
 	}, logger) {
 		/**
@@ -29,71 +24,54 @@ export class PutSyncer {
 				)}`
 			);
 		}
-		if (!incompleteDir) {
-			throw new Error(`env var missing: PUTIO_INCOMPLETE_DIR`);
-		}
-		if (!completeDir) {
-			throw new Error(`env var missing: PUTIO_COMPLETE_DIR`);
-		}
-		this.incompleteDir = path.resolve(incompleteDir);
-		this.completeDir = path.resolve(completeDir);
-		if (this.incompleteDir === this.completeDir) {
-			throw new Error(
-				`PUTIO_COMPLETE_DIR and PUTIO_INCOMPLETE_DIR are both ${this.incompleteDir}, they cannot both be the same`
-			);
-		}
-
 		/** @type {import("@putdotio/api-client").default} */
 		this.client = new tattle(PutIOAPI.default, this.logger)({ clientId });
 		this.client.setToken(clientToken);
 		this.uploadUrl = new URL(uploadUrl).href;
-		this.incompleteDir = path.resolve(incompleteDir);
-		this.completeDir = path.resolve(completeDir);
 	}
 
-	async start() {
-		await readdir(this.incompleteDir);
-		await readdir(this.completeDir);
+	async #setupState() {
 		this.currentState = {};
+		this.logger.trace('getting account info');
 		this.currentState.info = await this.client.Account.Info();
 		const {
 			data: {
-				info: { disk },
+				info
 			},
 		} = await this.client.Account.Info();
-		console.log("Put.IO storage");
-		console.log("Available:", formatBytes(disk.avail, 1));
-		console.log("Used:", formatBytes(disk.used, 1));
-		console.log("Total:", formatBytes(disk.size, 1));
+		this.currentState.info = info;
+		const disk = this.currentState.info.disk;
+
+		this.logger.info("Put.IO storage", {
+			Available: formatBytes(disk.avail, 1),
+			Used: formatBytes(disk.used, 1),
+			Total: formatBytes(disk.size)
+		});
+
 		const {
 			data: { status, transfers },
 		} = await this.client.Transfers.Query();
-		console.log("transfers status %s", status);
-		if (transfers.length > 0) {
-			console.table(transfers, [
-				"id",
-				"name",
-				"status",
-				"completion_percent",
-				"down_speed",
-			]);
-		}
+		this.currentState.transfers = transfers;
+		this.logger.info("transfers status %s", status);
+		this.logger.trace(transfers);
+
+		const {
+			data: { files }
+		} = await this.client.Files.Query();
+		this.currentState.files = files;
+	}
+
+	async start() {
+		await this.#setupState();
 	}
 
 	/**
-	 *
 	 * @param {import('@putdotio/api-client').Transfer} transfer
 	 */
-	async download(transfer) {
+	async getDownloadStream(transfer) {
 		const downloadUrl = await this.client.File.GetStorageURL(transfer.file_id);
-		const downloadingLocation = path.join(this.incompleteDir, transfer.name);
-		const doneLocation = path.join(this.completeDir, transfer.name);
 		const inStream = got.stream(downloadUrl.data);
-		const outStream = createWriteStream(downloadingLocation, {
-			encoding: "binary",
-		});
-		await pipeline(inStream, outStream);
-		await move(downloadingLocation, doneLocation);
+		return inStream;
 	}
 
 	async getTransfers() {
@@ -104,8 +82,9 @@ export class PutSyncer {
 		return this.client.Files.Query();
 	}
 
-	async startMagnetTransfer(magnetLinkFile) {
-		const magnetLink = await readFile(magnetLinkFile, "utf-8");
+	async startMagnetTransfer(magnetLink) {
+		const magnetData = parseTorrent(magnetLink);
+		this.trace('Read magnet data', magnetData);
 		const transfer = await this.client.Transfers.Add({
 			url: magnetLink,
 		});
@@ -113,10 +92,11 @@ export class PutSyncer {
 		return transfer.data;
 	}
 
-	async startTorrentTransfer(filePath, knownLength) {
-		const filename = path.basename(filePath);
+	async startTorrentTransfer(filename, knownLength, fileData) {
+		const torrentData = parseTorrent(fileData);
+		this.trace('Read torrent data', torrentData);
 		const form = new FormData();
-		form.append("file", await readFile(filePath), {
+		form.append("file", fileData, {
 			filename,
 			knownLength,
 			contentType: "application/octet-stream",

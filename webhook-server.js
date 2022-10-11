@@ -6,6 +6,7 @@ import { EventEmitter } from "node:events";
 
 const envToLogger = {
   development: {
+		redact: ['returned.config', 'returned.headers', 'returned.request'],
     transport: {
       target: 'pino-pretty',
       options: {

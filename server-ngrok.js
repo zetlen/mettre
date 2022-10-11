@@ -1,46 +1,45 @@
 import camelspace from "camelspace";
 import { connect as ngrokConnect } from "ngrok";
 import { WebhookServer } from "./webhook-server.js";
-import { BlackHoleWatcher } from "./blackhole-watcher.js";
+import { LocalSyncer } from "./local-syncer.js";
 import { PutSyncer } from "./put-syncer.js";
 import { config } from "dotenv";
 
 async function startNgrokServer() {
 	config();
-	const { webhook, blackhole, ngrok, putio, log } = camelspace.of([
+	const { webhook, local, ngrok, putio, log } = camelspace.of([
 		"webhook",
-		"blackhole",
+		"local",
 		"ngrok",
 		"putio",
 		"log",
 	]);
 
-
-	const webhookServer = new WebhookServer(
-		{...webhook, logger: log }
-	);
+	/** @type {WebhookServer} */
+	const webhookServer = new WebhookServer({ ...webhook, logger: log });
 	const logger = webhookServer.logger;
 
-	/** @type {WebhookServer} */
-	webhookServer.on("callback", async (info) => {
-		await putSyncer.download(info);
-	});
-
 	const putSyncer = new PutSyncer(putio, logger.child({ name: "PutSyncer" }));
-	const blackholeObserver = new BlackHoleWatcher(
-		blackhole,
-		logger.child({ name: "BlackHoleWatcher" })
+	const localSyncer = new LocalSyncer(
+		local,
+		logger.child({ name: "LocalSyncer" })
 	);
-	blackholeObserver.on("torrent", ({ filename, size }) =>
-		putSyncer.startTorrentTransfer(filename, size)
+
+	localSyncer.on("torrent", async ({ filename, stats }, getContents) =>
+		putSyncer.startTorrentTransfer(filename, stats.size, await getContents())
 	);
-	blackholeObserver.on("magnet", ({ filename }) =>
-		putSyncer.startMagnetTransfer(filename)
-	);
+	localSyncer.on("magnet", ({ link }) => putSyncer.startMagnetTransfer(link));
+
+	webhookServer.on("callback", async (info) => {
+		await localSyncer.download(
+			info.name,
+			await putSyncer.getDownloadStream(info)
+		);
+	});
 
 	await putSyncer.start();
 	await webhookServer.start();
-	await blackholeObserver.start();
+	await localSyncer.start();
 
 	const ngrokUrl = await ngrokConnect({
 		...ngrok,

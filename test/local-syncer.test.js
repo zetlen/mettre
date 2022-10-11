@@ -2,9 +2,9 @@ import path from "path";
 import os from "os";
 import fs from "node:fs";
 import test from "tape";
-import { BlackHoleWatcher } from "../blackhole-watcher.js";
+import { LocalSyncer } from "../local-syncer.js";
 
-test("blackhole watcher", function testWatcher(t) {
+test("local syncer", function testWatcher(t) {
 	t.plan(2);
 	const watchDir = fs.mkdtempSync(
 		path.join(os.tmpdir(), "mettre-watcher-test")
@@ -12,14 +12,14 @@ test("blackhole watcher", function testWatcher(t) {
 	t.comment(`temp watchDir ${watchDir}`);
 	const torrentFile = path.join(watchDir, "test1.torrent");
 	const magnetFile = path.join(watchDir, "test2.magnet");
-	const watcher = new BlackHoleWatcher({ watchDir, pollInterval: 200 });
-	watcher.on("torrent", ({ filename }) => {
+	const syncer = new LocalSyncer({ watchDir, pollInterval: 200 });
+	syncer.on("torrent", ({ filename }) => {
 		t.equal(filename, torrentFile, ".torrent drop event fired");
 	});
-	watcher.on("magnet", ({ filename }) => {
+	syncer.on("magnet", ({ filename }) => {
 		t.equal(filename, magnetFile, ".magnet drop event fired");
 	});
-	watcher.start().catch((e) => t.fail(e));
+	syncer.start().catch((e) => t.fail(e));
 	setTimeout(async () => {
 		try {
 			const watchTorrentLoc = path.join(watchDir, "test1.torrent");
@@ -40,6 +40,6 @@ test("blackhole watcher", function testWatcher(t) {
 	}, 1000);
 	t.teardown(() => {
 		fs.rmSync(watchDir, { force: true, recursive: true });
-		watcher.close().catch((e) => t.fail(e));
+		syncer.close().catch((e) => t.fail(e));
 	});
 });
