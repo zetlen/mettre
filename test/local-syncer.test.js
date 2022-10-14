@@ -4,15 +4,40 @@ import fs from "node:fs";
 import test from "tape";
 import { LocalSyncer } from "../local-syncer.js";
 
+const scratchDir = () => {
+	const dirs = [];
+	const tempBase = fs.mkdtempSync(path.join(os.tmpdir(), 'mettre-test-'));
+	dirs.push(tempBase);
+	function tempDirFac(subdir) {
+		const subPath = path.join(tempBase, subdir);
+		dirs.push(subPath);
+		fs.mkdirSync(subPath, { recursive: true, force: true });
+		return subPath;
+	}
+	tempDirFac.cleanup = () =>  {
+		let dir;
+		while (dir = dirs.pop()) {
+			try {
+				fs.rmdirSync(dir);
+			} catch (e){
+				console.warn('could not clean up', dir);
+			}
+		}
+	}
+	return tempDirFac;
+}
+
+
 test("local syncer", function testWatcher(t) {
 	t.plan(2);
-	const watchDir = fs.mkdtempSync(
-		path.join(os.tmpdir(), "mettre-watcher-test")
-	);
+	const mkTmpDir = scratchDir();
+	const watchDir = mkTmpDir('blackhole')
+	const completeDir = mkTmpDir('complete')
+	const incompleteDir = mkTmpDir('incomplete')
 	t.comment(`temp watchDir ${watchDir}`);
 	const torrentFile = path.join(watchDir, "test1.torrent");
 	const magnetFile = path.join(watchDir, "test2.magnet");
-	const syncer = new LocalSyncer({ watchDir, pollInterval: 200 });
+	const syncer = new LocalSyncer({ watchDir, completeDir, incompleteDir}, console);
 	syncer.on("torrent", ({ filename }) => {
 		t.equal(filename, torrentFile, ".torrent drop event fired");
 	});
@@ -39,7 +64,8 @@ test("local syncer", function testWatcher(t) {
 		}
 	}, 1000);
 	t.teardown(() => {
-		fs.rmSync(watchDir, { force: true, recursive: true });
 		syncer.close().catch((e) => t.fail(e));
+		mkTmpDir.cleanup();
 	});
 });
+

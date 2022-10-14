@@ -1,16 +1,18 @@
-import parseTorrent from "parse-torrent";
 import PutIOAPI from "@putdotio/api-client";
 import got from "got";
 import FormData from "form-data";
-import path, { parse } from "node:path";
-import { tattle } from "./tattletale.js";
+import path from "node:path";
+// import { tattle } from "./tattletale.js";
 
 export class PutSyncer {
-	constructor({
-		clientToken,
-		clientId,
-		uploadUrl
-	}, logger) {
+	#debounce(callback, interval) {
+		let timeout;
+		return (...args) => {
+			clearTimeout(timeout);
+			timeout = setTimeout(() => callback.apply(this, args), interval);
+		};
+	}
+	constructor({ clientToken, clientId, uploadUrl }, logger) {
 		/**
 		 * @type {import('pino').Logger}
 		 */
@@ -25,66 +27,157 @@ export class PutSyncer {
 			);
 		}
 		/** @type {import("@putdotio/api-client").default} */
-		this.client = new tattle(PutIOAPI.default, this.logger)({ clientId });
+		//this.client = new tattle(PutIOAPI.default, this.logger)({ clientId });
+		this.client = new PutIOAPI.default({ clientId });
 		this.client.setToken(clientToken);
 		this.uploadUrl = new URL(uploadUrl).href;
+
+		this.updateState = this.#debounce(this.updateState, 1000);
 	}
 
-	async #setupState() {
-		this.currentState = {};
-		this.logger.trace('getting account info');
-		this.currentState.info = await this.client.Account.Info();
-		const {
-			data: {
-				info
-			},
-		} = await this.client.Account.Info();
-		this.currentState.info = info;
-		const disk = this.currentState.info.disk;
+	async updateState() {
+		const [info, transfers, files] = await Promise.all([
+			this.getInfo(),
+			this.getAllTransfers(),
+			this.getAllFiles(),
+		]);
 
+		const { disk } = info;
 		this.logger.info("Put.IO storage", {
 			Available: formatBytes(disk.avail, 1),
 			Used: formatBytes(disk.used, 1),
-			Total: formatBytes(disk.size)
+			Total: formatBytes(disk.size),
 		});
 
-		const {
-			data: { status, transfers },
-		} = await this.client.Transfers.Query();
-		this.currentState.transfers = transfers;
-		this.logger.info("transfers status %s", status);
-		this.logger.trace(transfers);
+		const transferReport = Object.entries(transfers.byStatus).reduce(
+			(report, [status, list]) => ({
+				...report,
+				[status]: list.length,
+			}),
+			{}
+		);
+		this.logger.info(`${transfers.list.length} transfers:`, transferReport);
 
+		this.logger.info(`${files.size} files`);
+		this.currentState = {
+			info,
+			transfers,
+			files,
+		};
+	}
+
+	async getInfo() {
+		this.logger.trace("getting account info");
 		const {
-			data: { files }
-		} = await this.client.Files.Query();
-		this.currentState.files = files;
+			data: { info },
+		} = await this.client.Account.Info();
+		return info;
+	}
+
+	async getAllTransfers() {
+		const perPage = 500;
+		const list = [];
+		const byStatus = {};
+		async function intake(response) {
+			const {
+				data: { transfers, cursor },
+			} = await response;
+			for (const transfer of transfers) {
+				list.push(transfer);
+				const status = transfer.status.toLowerCase();
+				byStatus[status] = byStatus[status] || [];
+				byStatus[status].push(transfer);
+			}
+			if (cursor) {
+				await intake(this.client.Transfers.Continue(cursor, { perPage }));
+			}
+		}
+		await intake(this.client.Transfers.Query({ perPage }));
+		return { list, byStatus };
+	}
+
+	getFilePath(fileId) {
+		const { files } = this.currentState;
+		let file = files.get(fileId);
+		let filePath = file.name;
+		while ((file = files.get(file.parent_id))) {
+			filePath = path.join(file.name, filePath);
+		}
+		return filePath;
+	}
+
+	async getAllFiles() {
+		const perPage = 500;
+		const opts = {
+			perPage,
+			streamUrl: true,
+		};
+		const orphans = new Map();
+		const byId = new Map();
+		async function intake(response) {
+			const {
+				data: { files, cursor },
+			} = await response;
+			for (const file of files) {
+				file.children = [];
+				byId.set(file.id, file);
+				if (orphans.has(file.id)) {
+					file.children.push(...orphans.get(file.id));
+					orphans.delete(file.id);
+				}
+				const { parent_id } = file;
+				if (!parent_id) {
+					continue;
+				}
+				if (byId.has(parent_id)) {
+					byId.get(parent_id).children.push(file);
+					continue;
+				}
+				let siblings = orphans.get(parent_id);
+				if (!siblings) {
+					siblings = [];
+					orphans.set(parent_id, siblings);
+				}
+				siblings.push(file);
+			}
+			if (cursor) {
+				await intake(this.client.Files.Continue(cursor, opts));
+			}
+		}
+		await intake(this.client.Files.Query(-1, opts));
+		if (orphans.size > 0) {
+			this.logger.warn(
+				"Some files were orphans!",
+				[...this.orphans.values()].flat()
+			);
+		}
+		return byId;
 	}
 
 	async start() {
-		await this.#setupState();
+		await this.updateState();
 	}
 
 	/**
 	 * @param {import('@putdotio/api-client').Transfer} transfer
 	 */
-	async getDownloadStream(transfer) {
-		const downloadUrl = await this.client.File.GetStorageURL(transfer.file_id);
+	async getDownload(file) {
 		const inStream = got.stream(downloadUrl.data);
 		return inStream;
 	}
 
-	async getTransfers() {
-		return this.client.Transfers.Query();
-	}
+	async getDownloadsFor(transfer) {
+		await this.updateState();
+		const files = this.getAllFilesUnder(transfer.file_id);
+		const downloads = files.map(file => ({
+			dest: this.getFilePath(file.id),
+			stream: got.stream(file.streamUrl)
+		}));
 
-	async getFiles() {
-		return this.client.Files.Query();
 	}
 
 	async startMagnetTransfer(magnetLink) {
-		const magnetData = parseTorrent(magnetLink);
-		this.trace('Read magnet data', magnetData);
+		this.logger.trace("Read magnet data", magnetData);
 		const transfer = await this.client.Transfers.Add({
 			url: magnetLink,
 		});
@@ -93,8 +186,6 @@ export class PutSyncer {
 	}
 
 	async startTorrentTransfer(filename, knownLength, fileData) {
-		const torrentData = parseTorrent(fileData);
-		this.trace('Read torrent data', torrentData);
 		const form = new FormData();
 		form.append("file", fileData, {
 			filename,

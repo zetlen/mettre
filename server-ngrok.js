@@ -25,16 +25,14 @@ async function startNgrokServer() {
 		logger.child({ name: "LocalSyncer" })
 	);
 
-	localSyncer.on("torrent", async ({ filename, stats }, getContents) =>
-		putSyncer.startTorrentTransfer(filename, stats.size, await getContents())
+	localSyncer.on("torrent", async ({ filename, stats, data }) =>
+		putSyncer.startTorrentTransfer(filename, stats.size, data)
 	);
 	localSyncer.on("magnet", ({ link }) => putSyncer.startMagnetTransfer(link));
 
 	webhookServer.on("callback", async (info) => {
-		await localSyncer.download(
-			info.name,
-			await putSyncer.getDownloadStream(info)
-		);
+		const downloads = await putSyncer.getDownloadsFor(info);
+		downloads.forEach((dl) => localSyncer.download(dl.dest, dl.stream));
 	});
 
 	await putSyncer.start();

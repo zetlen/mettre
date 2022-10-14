@@ -1,14 +1,15 @@
 import path from "path";
 import chokidar from "chokidar";
 import {
-	readdir,
 	readFile,
+	mkdir,
 	rename as move,
 	unlink as trash,
 } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { createWriteStream } from "node:fs";
 import { EventEmitter } from "events";
+import parseTorrent from "parse-torrent"
 
 const anyTheSame = (args) => new Set(args).size !== args.length;
 
@@ -52,7 +53,7 @@ export class LocalSyncer extends EventEmitter {
 	}
 	async #handleFileAdded(baseName, stats) {
 		this.logger.trace("saw added:", baseName, stats);
-		if (!stats.isDirectory()) {
+		if (stats.isDirectory()) {
 			this.logger.warn(
 				`Found subdirectory ${baseName} in watched directory. ${admonishment}`,
 				stats
@@ -74,51 +75,53 @@ export class LocalSyncer extends EventEmitter {
 			);
 		}
 		const filename = path.resolve(this.watchDir, baseName);
-		const readFileCallback = async () => {
+		const readFileCallback = async (encoding) => {
 			this.logger.trace(
 				`"${extname}" event callback called, reading file ${filename}`
 			);
-			const contents = await readFile(filename);
+			const contents = await readFile(filename, encoding);
 			this.logger.trace(`successfully read file ${filename}`);
 			return contents;
 		};
 		if (extname === "magnet") {
-			this.#emitMagnetEvent(baseName, await readFileCallback());
+			const magnetData = parseTorrent(await readFileCallback('utf-8'));
+			this.#emitMagnetEvent(filename, magnetData);
 		} else {
-			this.#emitTorrentEvent(baseName, stats, readFileCallback);
+			const data = await readFileCallback();
+			const parsed = parseTorrent(data);
+			this.#emitTorrentEvent(filename, stats, data, parsed);
 		}
 	}
 	#emitMagnetEvent(filename, link) {
 		this.emit("magnet", { filename, link, cwd: this.watchDir });
 	}
-	#emitTorrentEvent(filename, stats, readFileCallback) {
-		this.emit("torrent", { filename, stats, cwd: this.watchDir }, readFileCallback);
+	#emitTorrentEvent(filename, stats, data, parsed) {
+		this.emit("torrent", { filename, data, stats, parsed, cwd: this.watchDir });
 	}
 	async start() {
 		this.logger.trace(`starting file watcher for ${this.watchDir}`);
 		this.fsWatcher = chokidar.watch(".", {
 			cwd: this.watchDir,
-			ignoreInitial: true,
+			ignoreInitial: false,
 			alwaysStat: true,
 		});
 		this.logger.trace(`subscribing to add event`);
 		this.fsWatcher.on("add", (...args) => this.#handleFileAdded(...args));
 	}
-	async download(name, downloadStream) {
-		const downloadingLocation = path.join(this.incompleteDir, name);
-		const doneLocation = path.join(this.completeDir, name);
+	async download({ dest, torrent, stream }) {
+		const downloadingLocation = path.join(this.incompleteDir, dest);
+		const doneLocation = path.join(this.completeDir, dest);
 		this.logger.info(
-			`downloading ${name} to ${downloadingLocation}; when complete, will move to ${doneLocation}`
+			`downloading ${dest} to ${downloadingLocation}; when complete, will move to ${doneLocation}`
 		);
-		const outStream = createWriteStream(downloadingLocation, {
-			encoding: "binary",
-		});
-		await pipeline(downloadStream, outStream);
-		this.logger.info(`download of ${name} complete! moving to ${doneLocation}`);
+		await mkdir(path.dirname(downloadingLocation), { recursive: true });
+		const file = createWriteStream(downloadingLocation);
+		await pipeline(stream, file);
+		this.logger.info(`download of ${dest} complete! moving to ${doneLocation}`);
 		await move(downloadingLocation, doneLocation);
-		this.logger.info(`${name} moved to ${doneLocation}`);
+		this.logger.info(`${dest} moved to ${doneLocation}`);
 		if (this.deleteOriginal) {
-			const original = path.join(this.watchDir, name);
+			const original = path.join(this.watchDir, torrent.file);
 			this.logger.info(`deleting original torrent ${original}`);
 			await trash(original);
 		}
