@@ -1,0 +1,6 @@
+files: 'test/*.test.js'
+jobs: 1
+reporter: specy
+coverage: true
+coverage-report: 'none'
+watch: true

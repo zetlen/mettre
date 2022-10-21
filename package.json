@@ -5,8 +5,10 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
+    "format": "prettier --loglevel warn --write \"./**/*.js\"",
     "lint": "eslint *.js",
-    "test": "tape test/*.test.js"
+    "test": "npm run -s format && c8 tap",
+    "watch": "tap --rcfile watch.taprc"
   },
   "repository": {
     "type": "git",
@@ -27,11 +29,15 @@
     "ngrok": "^4.3.3",
     "parse-torrent": "^9.1.5",
     "pino": "^8.6.1",
+    "pino-dev": "^3.0.0",
     "pino-pretty": "^9.1.1"
   },
   "devDependencies": {
+    "c8": "^7.12.0",
     "dotenv": "^16.0.3",
     "eslint": "^8.25.0",
+    "nock": "^13.2.9",
+    "prettier": "^2.7.1",
     "tap": "^16.3.0"
   }
 }

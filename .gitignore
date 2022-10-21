@@ -130,5 +130,3 @@ dist
 .pnp.*
 *.db
 temp
-*.torrent
-*.magnet

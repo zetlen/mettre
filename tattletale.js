@@ -109,8 +109,8 @@ export function tattle(Constructable, parentLogger, pinoOpts = {}) {
 	const logger = parentLogger.child({ name, ...pinoOpts });
 	return (...constructorArgs) => {
 		const instance = new Constructable(...constructorArgs, logger);
-			return logInvocations(instance, name, (invocation) =>
-				logger.trace(invocation)
-			);
-	}
+		return logInvocations(instance, name, (invocation) =>
+			logger.trace(invocation)
+		);
+	};
 }
