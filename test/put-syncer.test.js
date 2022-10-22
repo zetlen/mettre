@@ -8,11 +8,11 @@ import { makeAllDrops } from "./helpers/make-drop.js";
 
 const fakeConfig = {
 	clientId: 5898,
-	clientToken: '6FPX452FTEEMVAS46BJJ',
-	clientSecret: 'N36WMKEGLQOLW6Y6T62K',
+	clientToken: "6FPX452FTEEMVAS46BJJ",
+	clientSecret: "N36WMKEGLQOLW6Y6T62K",
 	pageSize: 2,
-	uploadUrl: 'https://upload.put.io/v2/files/upload'
-}
+	uploadUrl: "https://upload.put.io/v2/files/upload",
+};
 
 const baseDir = path.dirname(new URL(import.meta.url).pathname);
 const fixtureDir = path.join(baseDir, "fixtures");

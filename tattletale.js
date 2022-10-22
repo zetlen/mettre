@@ -16,14 +16,14 @@ function isThenable(obj) {
 const LOG_INVOCATIONS_PROXY = Symbol.for("LOG_INVOCATIONS_PROXY");
 const isLogProxy = (obj) => Reflect.has(obj, LOG_INVOCATIONS_PROXY);
 
-export function logInvocations(obj, name, callback) {
+export function logInvocations(obj, name, depth, callback) {
 	function proxyFunction(func, path) {
 		let callIds = 0;
 		const dotPath = path.join(".");
 		const logPrefix = `INVOCATION:${dotPath}:`;
 		function cbInvoke(callId, args) {
 			callback({
-				message: `${logPrefix}${callId} called with ${args.length} args`,
+				msg: `${logPrefix}${callId} called with ${args.length} args`,
 				args,
 				path,
 				callId,
@@ -82,6 +82,7 @@ export function logInvocations(obj, name, callback) {
 				if (
 					!Reflect.has(target, prop) ||
 					isPrimitive(value) ||
+					path.length >= depth ||
 					isLogProxy(value)
 				) {
 					return value;
@@ -104,13 +105,13 @@ export function logInvocations(obj, name, callback) {
 	return proxyValue(obj, [name]);
 }
 
-export function tattle(Constructable, parentLogger, pinoOpts = {}) {
-	const name = Constructable.name;
-	const logger = parentLogger.child({ name, ...pinoOpts });
-	return (...constructorArgs) => {
-		const instance = new Constructable(...constructorArgs, logger);
-		return logInvocations(instance, name, (invocation) =>
-			logger.trace(invocation)
-		);
-	};
+export function tattle(
+	logger = console,
+	instance,
+	name = "tattled",
+	depth = 3
+) {
+	return logInvocations(instance, name, depth, (invocation) =>
+		logger.trace(invocation)
+	);
 }
