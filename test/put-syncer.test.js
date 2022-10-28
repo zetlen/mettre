@@ -44,7 +44,7 @@ tap.test("PutSyncer contacts put.io", async (t) => {
 		t.matchSnapshot({ dest, url, file }, `downloadable ${dest} from ${url}`);
 	});
 
-	await syncer.finalize({
+	await syncer.download({
 		hash: "d64bae4b1b1868df39c305c42b867142911bdaa2",
 		name: "American.Gigolo.S01E07.PROPER.1080p.WEB.H264-GLHF[TGx]",
 		file_id: 79799977,

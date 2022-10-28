@@ -3,6 +3,6 @@ export function mockConfig(settings) {
 	return {
 		settings,
 		logger: pino({ level: "silent" }),
-		env: "test",
+		mode: "test",
 	};
 }

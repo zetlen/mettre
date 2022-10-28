@@ -2,11 +2,12 @@
   "name": "mettre",
   "version": "0.0.1",
   "description": "",
-  "main": "index.js",
+  "main": "lib/mettre.js",
   "type": "module",
   "scripts": {
     "format": "prettier --loglevel warn --write \"./**/*.js\"",
     "lint": "eslint *.js",
+    "start": "node server.js",
     "test": "npm run -s format && c8 tap",
     "watch": "tap --rcfile watch.taprc"
   },
