@@ -7,6 +7,6 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 COPY lib lib
-COPY server.js server.js
+COPY dockerized.js server.js
 
 CMD [ "npm", "start" ]
