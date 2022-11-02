@@ -5,12 +5,17 @@
   "main": "lib/mettre.js",
   "type": "module",
   "scripts": {
+    "docker-build": "docker build -t zetlen/mettre:latest .",
+    "docker-push": "docker push zetlen/mettre:latest",
     "format": "prettier --loglevel warn --write \"./**/*.js\"",
     "lint": "eslint *.js",
-    "start": "node server.js",
+    "start": "node lib/server.js",
     "test": "npm run -s format && c8 tap",
     "watch": "tap --rcfile watch.taprc"
   },
+  "files": [
+    "lib/*"
+  ],
   "repository": {
     "type": "git",
     "url": "/home/zetlen/proj/zetlen-boilerplates"
