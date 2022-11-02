@@ -7,6 +7,9 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 COPY lib lib
-COPY dockerized.js server.js
+COPY server.js server.js
+
+# setting a blank namespace means env vars don't have to be prefixed with METTRE
+ENV METTRE_NAMESPACE=
 
 CMD [ "npm", "start" ]
