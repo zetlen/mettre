@@ -8,8 +8,9 @@ RUN apk add --no-cache su-exec bash
 WORKDIR /usr/src/mettre
 
 COPY package*.json ./
-COPY lib lib
 RUN npm ci --omit=dev
+
+COPY lib lib
 
 COPY docker-entrypoint.sh docker-entrypoint.sh
 
