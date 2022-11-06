@@ -3,17 +3,17 @@
 PUID=${PUID:-911}
 PGID=${PGID:-911}
 
-groupmod -o -g "$PGID" abc
-usermod -o -u "$PUID" abc
+groupadd -o -g "$PGID" mettre
+useradd -o -u "$PUID" -g mettre mettre
 
 echo "
 -------------------------------------
 GID/UID
 -------------------------------------
-User uid:    $(id -u abc)
-User gid:    $(id -g abc)
+User uid:    $(id -u mettre)
+User gid:    $(id -g mettre)
 -------------------------------------
 "
 
-chown abc:abc /usr/src/mettre
+chown mettre:mettre /usr/src/mettre
 su-exec "$PUID":"$PGID" node lib/server.js

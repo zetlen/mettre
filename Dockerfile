@@ -3,7 +3,7 @@ FROM node:16-alpine
 # setting a blank namespace means env vars don't have to be prefixed with METTRE
 ENV METTRE_NAMESPACE=
 
-RUN apk add --no-cache su-exec bash
+RUN apk add --no-cache su-exec bash shadow
 
 WORKDIR /usr/src/mettre
 
@@ -14,4 +14,4 @@ COPY lib lib
 
 COPY docker-entrypoint.sh docker-entrypoint.sh
 
-CMD [ "./docker-entrypoint.sh" ]
+ENTRYPOINT [ "./docker-entrypoint.sh" ]
